@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Von Neumann Simulator</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+:root{
+  --bg:#04080d;--green:#00ffb4;--blue:#38beff;--gold:#ffd700;--purple:#c97cff;
+  --orange:#ff9044;--red:#ff4466;--text:#b8d8e8;--dim:#2e4a58;
+  --cpu-bg:#071810;--cpu-b:#00ffb4;--mem-bg:#060d1a;--mem-b:#38beff;
+  --io-bg:#0e0715;--io-b:#c97cff;
+  --gg:0 0 12px #00ffb450,0 0 24px #00ffb420;
+  --gb:0 0 12px #38beff50,0 0 24px #38beff20;
+  --ggold:0 0 8px #ffd70060;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);font-family:'Share Tech Mono',monospace;color:var(--text);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px 10px 40px;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,255,180,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,180,0.03) 1px,transparent 1px);background-size:36px 36px;pointer-events:none;z-index:0;}
+
+h1{font-family:'Orbitron',sans-serif;font-size:clamp(12px,2.2vw,18px);font-weight:900;letter-spacing:.22em;color:var(--green);text-shadow:var(--gg);text-align:center;margin-bottom:3px;position:relative;z-index:1;}
+.sub{font-size:9px;color:var(--dim);letter-spacing:.14em;margin-bottom:14px;text-align:center;position:relative;z-index:1;}
+
+/* ── PROG SELECTOR ── */
+.prog-panel{width:100%;max-width:980px;z-index:1;background:rgba(0,18,8,0.85);border:1px solid rgba(0,255,180,0.18);border-radius:6px;padding:12px 14px;margin-bottom:12px;}
+.panel-hd{font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:.2em;color:var(--green);margin-bottom:8px;}
+.prog-btns{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:8px;}
+.pb{font-family:'Share Tech Mono',monospace;font-size:9.5px;background:rgba(0,255,180,0.04);border:1px solid rgba(0,255,180,0.2);color:var(--green);padding:5px 10px;border-radius:3px;cursor:pointer;transition:all .2s;}
+.pb:hover,.pb.active{background:rgba(0,255,180,0.1);border-color:var(--green);box-shadow:var(--gg);}
+.prog-desc{font-size:9.5px;color:var(--dim);line-height:1.7;}
+
+/* ── CONTROLS ── */
+.controls{width:100%;max-width:980px;z-index:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+.btn{font-family:'Share Tech Mono',monospace;font-size:9.5px;letter-spacing:.1em;border:1px solid rgba(0,255,180,0.3);background:rgba(0,255,180,0.05);color:var(--green);padding:6px 12px;border-radius:3px;cursor:pointer;transition:all .2s;}
+.btn:hover{background:rgba(0,255,180,0.12);box-shadow:var(--gg);}
+.btn:disabled{opacity:.3;cursor:not-allowed;}
+.btn.red{border-color:rgba(255,68,102,.3);color:var(--red);background:rgba(255,68,102,.04);}
+.btn.blue-b{border-color:rgba(56,190,255,.3);color:var(--blue);background:rgba(56,190,255,.04);}
+.btn.blue-b:hover{background:rgba(56,190,255,.1);}
+.spd{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--dim);}
+input[type=range]{accent-color:var(--green);width:75px;}
+.sbar{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--dim);margin-left:auto;}
+.sdot{width:6px;height:6px;border-radius:50%;background:var(--dim);transition:all .3s;}
+.sdot.run{background:var(--green);box-shadow:var(--gg);animation:blink 1s infinite;}
+.sdot.done{background:var(--orange);}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.15;}}
+
+/* ── STEP EXPLAINER ── */
+.step-explainer{
+  width:100%;max-width:980px;z-index:1;
+  background:rgba(0,255,180,0.04);border:1px solid rgba(0,255,180,0.25);
+  border-radius:5px;padding:10px 14px;margin-bottom:10px;
+  min-height:46px;transition:all .3s;
+}
+.step-ex-phase{font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:.15em;color:var(--green);margin-bottom:4px;}
+.step-ex-text{font-size:10.5px;color:var(--text);line-height:1.6;}
+.step-ex-text .hl-green{color:var(--green);font-weight:bold;}
+.step-ex-text .hl-blue{color:var(--blue);}
+.step-ex-text .hl-gold{color:var(--gold);}
+.step-ex-text .hl-orange{color:var(--orange);}
+.step-ex-text .hl-purple{color:var(--purple);}
+
+/* ── ARCH CANVAS ── */
+.arch-wrap{width:100%;max-width:980px;z-index:1;position:relative;}
+.arch-grid{display:grid;grid-template-columns:1.85fr 1fr;gap:11px;position:relative;}
+
+/* Arrow SVG overlay */
+#arrowSvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:10;overflow:visible;}
+
+/* CPU */
+.cpu-box{background:var(--cpu-bg);border:1.5px solid var(--cpu-b);border-radius:6px;padding:13px 11px;box-shadow:inset 0 0 30px rgba(0,255,180,0.03),0 0 18px rgba(0,255,180,0.08);}
+.box-lbl{font-family:'Orbitron',sans-serif;font-size:8.5px;letter-spacing:.2em;font-weight:700;margin-bottom:9px;padding-bottom:5px;opacity:.8;}
+.cpu-box .box-lbl{color:var(--green);border-bottom:1px solid rgba(0,255,180,0.18);}
+.cpu-inner{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
+.cu-shell{border:1px dashed rgba(0,255,180,0.18);border-radius:4px;padding:7px;}
+.cu-hd{font-family:'Orbitron',sans-serif;font-size:7.5px;letter-spacing:.12em;color:rgba(0,255,180,0.4);margin-bottom:6px;}
+.alu-col{display:flex;flex-direction:column;gap:6px;}
+
+/* Register card */
+.reg{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:3px;padding:7px 8px 6px;transition:all .3s;position:relative;}
+.reg.green{color:var(--green);border-color:rgba(0,255,180,0.15);}
+.reg.blue{color:var(--blue);border-color:rgba(56,190,255,0.15);}
+
+/* Highlight states */
+.reg.active-src{
+  border-color:var(--gold)!important;
+  background:rgba(255,215,0,0.08)!important;
+  box-shadow:0 0 14px rgba(255,215,0,0.35)!important;
+  animation:pulse-src .5s ease;
+}
+.reg.active-dst{
+  border-color:var(--orange)!important;
+  background:rgba(255,144,68,0.08)!important;
+  box-shadow:0 0 14px rgba(255,144,68,0.35)!important;
+  animation:pulse-dst .5s ease;
+}
+.reg.active-exec{
+  border-color:var(--purple)!important;
+  background:rgba(201,124,255,0.08)!important;
+  box-shadow:0 0 14px rgba(201,124,255,0.35)!important;
+}
+@keyframes pulse-src{0%,100%{transform:scale(1);}40%{transform:scale(1.04);}}
+@keyframes pulse-dst{0%,100%{transform:scale(1);}40%{transform:scale(1.03);}}
+
+.reg-top{display:flex;justify-content:space-between;align-items:baseline;}
+.reg-id{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;}
+.reg-val{font-size:12px;font-weight:700;color:#fff;letter-spacing:.05em;min-width:50px;text-align:right;transition:color .3s;}
+.reg-val.flash{color:var(--orange);}
+.reg-name{font-size:7.5px;color:var(--dim);margin-top:2px;letter-spacing:.04em;text-transform:uppercase;}
+
+/* RAM */
+.mem-box{background:var(--mem-bg);border:1.5px solid var(--mem-b);border-radius:6px;padding:13px 11px;box-shadow:inset 0 0 25px rgba(56,190,255,0.03),0 0 16px rgba(56,190,255,0.08);}
+.mem-box .box-lbl{color:var(--blue);border-bottom:1px solid rgba(56,190,255,0.18);}
+.ram-badge{display:flex;align-items:center;justify-content:space-between;background:rgba(56,190,255,0.05);border:1.5px solid rgba(56,190,255,0.25);border-radius:3px;padding:6px 8px;margin-bottom:7px;}
+.ram-id{font-family:'Orbitron',sans-serif;font-size:15px;font-weight:700;color:var(--blue);letter-spacing:.15em;}
+.ram-sub{font-size:7px;color:rgba(56,190,255,0.45);text-align:right;line-height:1.5;}
+.mem-table{width:100%;border-collapse:collapse;font-size:9px;}
+.mem-table th{color:var(--dim);font-size:7.5px;letter-spacing:.1em;padding:2px 3px;text-align:left;border-bottom:1px solid rgba(56,190,255,0.08);}
+.mem-table td{padding:3px 4px;border-bottom:1px solid rgba(56,190,255,0.05);color:var(--text);transition:all .3s;}
+.mem-table tr.row-fetch td{background:rgba(255,215,0,0.08)!important;color:var(--gold);}
+.mem-table tr.row-read td{background:rgba(56,190,255,0.1)!important;color:var(--blue);}
+.mem-table tr.row-write td{background:rgba(255,144,68,0.1)!important;color:var(--orange);}
+.addr-c{color:rgba(56,190,255,0.45);width:28px;font-size:8.5px;}
+.tbadge{font-size:7px;padding:1px 4px;border-radius:2px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.07);}
+.ib{border-color:rgba(0,255,180,.2)!important;color:var(--green)!important;}
+.db{border-color:rgba(56,190,255,.2)!important;color:var(--blue)!important;}
+
+/* I/O */
+.io-row{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:11px;}
+.io-unit{background:var(--io-bg);border:1.5px solid var(--io-b);border-radius:6px;padding:11px;box-shadow:0 0 12px rgba(201,124,255,0.07);}
+.io-unit .box-lbl{color:var(--purple);border-bottom:1px solid rgba(201,124,255,0.18);}
+.io-devs{display:flex;gap:5px;flex-wrap:wrap;}
+.iod{background:rgba(201,124,255,0.05);border:1px solid rgba(201,124,255,0.13);border-radius:2px;padding:3px 6px;font-size:8.5px;color:rgba(201,124,255,0.6);}
+.out-val{margin-top:7px;background:rgba(0,0,0,.3);border:1px solid rgba(201,124,255,.13);border-radius:3px;padding:5px 7px;font-size:12px;min-height:26px;color:var(--purple);letter-spacing:.05em;}
+.out-val.lit{color:var(--green);border-color:rgba(0,255,180,.3);box-shadow:var(--gg);}
+
+/* System bus */
+.sys-bus{position:relative;height:26px;margin:4px 0;}
+.bus-bar{position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);height:7px;background:linear-gradient(90deg,transparent,var(--gold) 8%,var(--gold) 92%,transparent);box-shadow:var(--ggold);border-radius:4px;overflow:hidden;}
+.bus-pulse{position:absolute;top:0;width:65px;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);animation:bp 1.6s linear infinite;}
+@keyframes bp{from{left:-65px;}to{left:100%;}}
+.bus-lbl{position:absolute;right:0;top:50%;transform:translateY(-50%);font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:.12em;color:var(--gold);text-shadow:var(--ggold);white-space:nowrap;}
+
+/* ── CYCLE STRIP ── */
+.cycle-strip{width:100%;max-width:980px;z-index:1;display:flex;gap:3px;margin:10px 0;}
+.cs{flex:1;min-width:60px;text-align:center;padding:7px 3px;border:1px solid rgba(255,255,255,0.05);border-radius:3px;transition:all .3s;cursor:default;}
+.cs.done{background:rgba(0,255,180,0.03);border-color:rgba(0,255,180,0.18);}
+.cs.active{background:rgba(0,255,180,0.08);border-color:var(--green);box-shadow:var(--gg);}
+.cs-n{font-family:'Orbitron',sans-serif;font-size:7.5px;color:var(--dim);margin-bottom:2px;}
+.cs-name{font-size:8.5px;letter-spacing:.05em;line-height:1.4;}
+.cs.active .cs-n,.cs.active .cs-name{color:var(--green);}
+.cs.done .cs-name{color:rgba(0,255,180,0.55);}
+
+/* ── LOG ── */
+.log-panel{width:100%;max-width:980px;z-index:1;background:rgba(4,8,13,.95);border:1px solid rgba(0,255,180,0.1);border-radius:6px;padding:11px 13px;}
+.log-hd{font-family:'Orbitron',sans-serif;font-size:8.5px;letter-spacing:.2em;color:var(--green);margin-bottom:8px;}
+.log-area{max-height:130px;overflow-y:auto;font-size:9.5px;line-height:1.9;}
+.ll{color:var(--dim);}
+.ll.cur{color:var(--text);}
+.g{color:var(--green);}.b{color:var(--blue);}.go{color:var(--gold);}.o{color:var(--orange);}.p{color:var(--purple);}
+
+/* ── INSTR REF ── */
+.iref{width:100%;max-width:980px;z-index:1;background:rgba(4,8,13,.9);border:1px solid rgba(255,255,255,0.05);border-radius:6px;padding:11px 13px;margin-top:10px;}
+.iref-hd{font-family:'Orbitron',sans-serif;font-size:8.5px;letter-spacing:.2em;color:var(--dim);margin-bottom:8px;}
+.iref-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:5px;}
+.ic{background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,0.05);border-radius:3px;padding:6px 7px;}
+.im{font-family:'Orbitron',sans-serif;font-size:9.5px;font-weight:700;color:var(--green);margin-bottom:2px;}
+.id{font-size:7.5px;color:var(--dim);line-height:1.5;}
+
+/* Arrow SVG styles */
+.arrow-line{stroke-width:2.5;fill:none;stroke-linecap:round;stroke-linejoin:round;marker-end:url(#ah);}
+.arrow-anim{stroke-dasharray:6 3;animation:dash 0.4s linear infinite;}
+@keyframes dash{to{stroke-dashoffset:-18;}}
+.arrow-gold{stroke:var(--gold);filter:drop-shadow(0 0 4px #ffd70080);}
+.arrow-green{stroke:var(--green);filter:drop-shadow(0 0 4px #00ffb480);}
+.arrow-blue{stroke:var(--blue);filter:drop-shadow(0 0 4px #38beff80);}
+.arrow-orange{stroke:var(--orange);filter:drop-shadow(0 0 4px #ff904480);}
+.arrow-purple{stroke:var(--purple);filter:drop-shadow(0 0 4px #c97cff80);}
+
+.arrow-label-bg{fill:var(--bg);rx:3;ry:3;}
+.arrow-label-txt{font-family:'Share Tech Mono',monospace;font-size:9px;font-weight:bold;text-anchor:middle;dominant-baseline:middle;}
+
+.clk-row{display:flex;align-items:center;gap:6px;justify-content:center;margin-top:10px;z-index:1;position:relative;}
+.cd{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:var(--gg);animation:blink 1s ease-in-out infinite;}
+.cl{font-size:8.5px;color:var(--dim);letter-spacing:.1em;}
+
+@media(max-width:600px){
+  .arch-grid{grid-template-columns:1fr;}
+  .cpu-inner{grid-template-columns:1fr 1fr;}
+  .io-row{grid-template-columns:1fr;}
+  .cycle-strip{flex-wrap:wrap;}
+}
+</style>
+</head>
+<body>
+<h1>VON NEUMANN ARCHITECTURE SIMULATOR</h1>
+<p class="sub">STEP-BY-STEP · ANIMATED SIGNAL FLOW · FETCH → DECODE → EXECUTE</p>
+
+<!-- Program selector -->
+<div class="prog-panel">
+  <div class="panel-hd">▸ SELECT EXAMPLE PROGRAM</div>
+  <div class="prog-btns" id="progBtns"></div>
+  <div class="prog-desc" id="progDesc">Choose a program above to load instructions and data into RAM.</div>
+</div>
+
+<!-- Controls -->
+<div class="controls">
+  <button class="btn" id="btnStep" onclick="step()" disabled>▶ NEXT STEP</button>
+  <button class="btn blue-b" id="btnAuto" onclick="toggleAuto()" disabled>⏵ AUTO</button>
+  <button class="btn red" id="btnReset" onclick="resetSim()" disabled>↺ RESET</button>
+  <div class="spd">SPEED <input type="range" id="spd" min="150" max="2000" value="800"></div>
+  <div class="sbar"><div class="sdot" id="sdot"></div><span id="stxt">IDLE</span></div>
+</div>
+
+<!-- Step explainer banner -->
+<div class="step-explainer" id="explainer">
+  <div class="step-ex-phase" id="exPhase">READY</div>
+  <div class="step-ex-text" id="exText">Load a program, then press <strong>NEXT STEP</strong> to walk through the Fetch-Decode-Execute cycle one micro-step at a time.</div>
+</div>
+
+<!-- Architecture diagram -->
+<div class="arch-wrap">
+  <div class="arch-grid" id="archGrid">
+    <!-- CPU -->
+    <div class="cpu-box" id="cpuBox">
+      <div class="box-lbl">CENTRAL PROCESSING UNIT (CPU)</div>
+      <div class="cpu-inner">
+        <!-- Control Unit -->
+        <div class="cu-shell" id="cuShell">
+          <div class="cu-hd">CONTROL UNIT</div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <div class="reg green" id="r-pc">
+              <div class="reg-top"><span class="reg-id">PC</span><span class="reg-val" id="v-pc">—</span></div>
+              <div class="reg-name">Program Counter</div>
+            </div>
+            <div class="reg green" id="r-cir">
+              <div class="reg-top"><span class="reg-id">CIR</span><span class="reg-val" id="v-cir" style="font-size:8.5px;">—</span></div>
+              <div class="reg-name">Current Instruction Reg.</div>
+            </div>
+            <div class="reg green" id="r-cu">
+              <div class="reg-top"><span class="reg-id">CU</span><span class="reg-val" id="v-cu" style="font-size:8.5px;">—</span></div>
+              <div class="reg-name">Control Unit Signal</div>
+            </div>
+          </div>
+        </div>
+        <!-- ALU side -->
+        <div class="alu-col">
+          <div class="reg green" id="r-mar">
+            <div class="reg-top"><span class="reg-id">MAR</span><span class="reg-val" id="v-mar">—</span></div>
+            <div class="reg-name">Mem. Address Reg.</div>
+          </div>
+          <div class="reg green" id="r-mdr">
+            <div class="reg-top"><span class="reg-id">MDR</span><span class="reg-val" id="v-mdr">—</span></div>
+            <div class="reg-name">Mem. Data Reg.</div>
+          </div>
+          <div class="reg green" id="r-alu" style="background:rgba(0,255,180,0.03);">
+            <div class="reg-top"><span class="reg-id">ALU</span><span class="reg-val" id="v-alu">—</span></div>
+            <div class="reg-name">Arithmetic Logic Unit</div>
+          </div>
+          <div class="reg green" id="r-acc">
+            <div class="reg-top"><span class="reg-id">ACC</span><span class="reg-val" id="v-acc">—</span></div>
+            <div class="reg-name">Accumulator</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Memory -->
+    <div class="mem-box" id="memBox">
+      <div class="box-lbl">MAIN MEMORY</div>
+      <div class="ram-badge">
+        <div class="ram-id">RAM</div>
+        <div class="ram-sub">RANDOM<br>ACCESS<br>MEMORY</div>
+      </div>
+      <table class="mem-table">
+        <thead><tr><th>ADDR</th><th>VALUE</th><th>TYPE</th><th>LABEL</th></tr></thead>
+        <tbody id="memBody"></tbody>
+      </table>
+    </div>
+
+    <!-- SVG arrow overlay -->
+    <svg id="arrowSvg" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="currentColor" id="ahPath"/>
+        </marker>
+        <marker id="ah-gold" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#ffd700"/>
+        </marker>
+        <marker id="ah-green" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#00ffb4"/>
+        </marker>
+        <marker id="ah-blue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#38beff"/>
+        </marker>
+        <marker id="ah-orange" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#ff9044"/>
+        </marker>
+        <marker id="ah-purple" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#c97cff"/>
+        </marker>
+      </defs>
+      <g id="arrowGroup"></g>
+    </svg>
+  </div>
+
+  <!-- System bus -->
+  <div class="sys-bus">
+    <div class="bus-bar"><div class="bus-pulse"></div></div>
+    <div class="bus-lbl">◄ SYSTEM BUS (DATA · ADDRESS · CONTROL) ►</div>
+  </div>
+
+  <!-- I/O -->
+  <div class="io-row">
+    <div class="io-unit">
+      <div class="box-lbl">INPUT DEVICES</div>
+      <div class="io-devs"><div class="iod">KEYBOARD</div><div class="iod">MOUSE</div><div class="iod">SENSORS</div></div>
+    </div>
+    <div class="io-unit" id="outputUnit">
+      <div class="box-lbl">OUTPUT DEVICES</div>
+      <div class="io-devs"><div class="iod">MONITOR</div><div class="iod">PRINTER</div><div class="iod">SPEAKER</div></div>
+      <div class="out-val" id="outVal">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- Cycle strip -->
+<div class="cycle-strip" id="cycleStrip"></div>
+
+<!-- Log -->
+<div class="log-panel">
+  <div class="log-hd">▸ EXECUTION LOG</div>
+  <div class="log-area" id="logArea"></div>
+</div>
+
+<!-- Instr ref -->
+<div class="iref">
+  <div class="iref-hd">▸ INSTRUCTION SET REFERENCE</div>
+  <div class="iref-grid">
+    <div class="ic"><div class="im">LDA addr</div><div class="id">Load RAM[addr] → ACC</div></div>
+    <div class="ic"><div class="im">STA addr</div><div class="id">Store ACC → RAM[addr]</div></div>
+    <div class="ic"><div class="im">ADD addr</div><div class="id">ACC = ACC + RAM[addr]</div></div>
+    <div class="ic"><div class="im">SUB addr</div><div class="id">ACC = ACC − RAM[addr]</div></div>
+    <div class="ic"><div class="im">MUL addr</div><div class="id">ACC = ACC × RAM[addr]</div></div>
+    <div class="ic"><div class="im">DIV addr</div><div class="id">ACC = ACC ÷ RAM[addr]</div></div>
+    <div class="ic"><div class="im">MOD addr</div><div class="id">ACC = ACC mod RAM[addr]</div></div>
+    <div class="ic"><div class="im">CMP addr</div><div class="id">Compare ACC vs RAM[addr]</div></div>
+    <div class="ic"><div class="im">OUT addr</div><div class="id">Output RAM[addr] to screen</div></div>
+    <div class="ic"><div class="im">HLT</div><div class="id">Halt — stop CPU</div></div>
+  </div>
+</div>
+
+<div class="clk-row">
+  <div class="cd"></div><span class="cl">SYSTEM CLOCK</span>
+  <div class="cd" style="animation-delay:.33s"></div>
+  <div class="cd" style="animation-delay:.66s"></div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════
+// PROGRAMS
+// ════════════════════════════════════════════════════════
+const PROGS=[
+  {name:'ADD: 5+3',desc:'Loads 5 from address 100 into ACC, adds 3 from address 101. Stores result (8) at address 102, then outputs it.',
+   mem:[{a:0,v:'LDA 100',t:'I',l:'Load A'},{a:1,v:'ADD 101',t:'I',l:'ACC+B'},{a:2,v:'STA 102',t:'I',l:'Store result'},{a:3,v:'OUT 102',t:'I',l:'Output'},{a:4,v:'HLT',t:'I',l:'Halt'},{a:100,v:5,t:'D',l:'A=5'},{a:101,v:3,t:'D',l:'B=3'},{a:102,v:0,t:'D',l:'Result'}]},
+  {name:'SUB: 10−4',desc:'Loads 10 from address 100, subtracts 4 from address 101. Result (6) stored at 102 and output.',
+   mem:[{a:0,v:'LDA 100',t:'I',l:'Load 10'},{a:1,v:'SUB 101',t:'I',l:'ACC-B'},{a:2,v:'STA 102',t:'I',l:'Store result'},{a:3,v:'OUT 102',t:'I',l:'Output'},{a:4,v:'HLT',t:'I',l:'Halt'},{a:100,v:10,t:'D',l:'A=10'},{a:101,v:4,t:'D',l:'B=4'},{a:102,v:0,t:'D',l:'Result'}]},
+  {name:'MUL: 6×7',desc:'Loads 6 from address 100, multiplies by 7 at address 101. Result (42) stored at 102 and output.',
+   mem:[{a:0,v:'LDA 100',t:'I',l:'Load 6'},{a:1,v:'MUL 101',t:'I',l:'ACC×B'},{a:2,v:'STA 102',t:'I',l:'Store result'},{a:3,v:'OUT 102',t:'I',l:'Output'},{a:4,v:'HLT',t:'I',l:'Halt'},{a:100,v:6,t:'D',l:'A=6'},{a:101,v:7,t:'D',l:'B=7'},{a:102,v:0,t:'D',l:'Result'}]},
+  {name:'DIV: 20÷4',desc:'Loads 20 from address 100, divides by 4 at address 101. Integer result (5) stored at 102 and output.',
+   mem:[{a:0,v:'LDA 100',t:'I',l:'Load 20'},{a:1,v:'DIV 101',t:'I',l:'ACC÷B'},{a:2,v:'STA 102',t:'I',l:'Store result'},{a:3,v:'OUT 102',t:'I',l:'Output'},{a:4,v:'HLT',t:'I',l:'Halt'},{a:100,v:20,t:'D',l:'A=20'},{a:101,v:4,t:'D',l:'B=4'},{a:102,v:0,t:'D',l:'Result'}]},
+  {name:'CHAIN: (8+2)−3',desc:'Multi-step: loads 8, adds 2 (=10), subtracts 3 (=7). ACC carries result between instructions.',
+   mem:[{a:0,v:'LDA 100',t:'I',l:'Load 8'},{a:1,v:'ADD 101',t:'I',l:'ACC+2→10'},{a:2,v:'SUB 102',t:'I',l:'ACC-3→7'},{a:3,v:'STA 103',t:'I',l:'Store result'},{a:4,v:'OUT 103',t:'I',l:'Output'},{a:5,v:'HLT',t:'I',l:'Halt'},{a:100,v:8,t:'D',l:'A=8'},{a:101,v:2,t:'D',l:'B=2'},{a:102,v:3,t:'D',l:'C=3'},{a:103,v:0,t:'D',l:'Result'}]},
+  {name:'MOD: 17 mod 5',desc:'Loads 17, applies mod 5. Result (2) is the remainder. Foundation of cyclic indexing and loops.',
+   mem:[{a:0,v:'LDA 100',t:'I',l:'Load 17'},{a:1,v:'MOD 101',t:'I',l:'17 mod 5'},{a:2,v:'STA 102',t:'I',l:'Store result'},{a:3,v:'OUT 102',t:'I',l:'Output'},{a:4,v:'HLT',t:'I',l:'Halt'},{a:100,v:17,t:'D',l:'A=17'},{a:101,v:5,t:'D',l:'B=5'},{a:102,v:0,t:'D',l:'Result'}]},
+  {name:'CMP: 9 vs 9',desc:'Loads 9, compares with 9 at address 101. CU flags EQUAL. Foundation of conditional logic in CPUs.',
+   mem:[{a:0,v:'LDA 100',t:'I',l:'Load 9'},{a:1,v:'CMP 101',t:'I',l:'Compare'},{a:2,v:'OUT 100',t:'I',l:'Output A'},{a:3,v:'HLT',t:'I',l:'Halt'},{a:100,v:9,t:'D',l:'A=9'},{a:101,v:9,t:'D',l:'B=9'}]},
+];
+
+// ════════════════════════════════════════════════════════
+// MICRO-STEP DEFINITIONS
+// Each instruction produces a sequence of micro-steps.
+// Each micro-step has: { phase, label, explain, src, dst, color, action }
+// src/dst are element IDs for arrow drawing
+// ════════════════════════════════════════════════════════
+const CYCLE_NAMES=[
+  {n:'1',name:'FETCH\nPC→MAR'},
+  {n:'2',name:'LOAD\nRAM→MDR'},
+  {n:'3',name:'DECODE\nMDR→CIR'},
+  {n:'4',name:'PC++\nIncrement'},
+  {n:'5',name:'EXECUTE\nALU/MEM'},
+  {n:'6',name:'WRITEBACK\n→ACC/RAM'},
+];
+
+// State
+let memory=[], acc=0, pc=0, mar=0, mdr=0, cir='—', cu='—', alu='—';
+let microSteps=[], microIdx=0, halted=false;
+let autoTimer=null, autoOn=false, curProg=null, cmpFlag='';
+let arrowTimeout=null;
+
+// ════════════════════════════════════════════════════════
+// BUILD UI
+// ════════════════════════════════════════════════════════
+function buildProgBtns(){
+  const w=document.getElementById('progBtns');
+  PROGS.forEach((p,i)=>{
+    const b=document.createElement('button');
+    b.className='pb';b.textContent=p.name;
+    b.onclick=()=>loadProg(i,b);w.appendChild(b);
+  });
+}
+
+function buildCycleStrip(){
+  const s=document.getElementById('cycleStrip');s.innerHTML='';
+  CYCLE_NAMES.forEach((c,i)=>{
+    const d=document.createElement('div');d.className='cs';d.id='cs-'+i;
+    d.innerHTML=`<div class="cs-n">${c.n}</div><div class="cs-name">${c.name.replace('\n','<br>')}</div>`;
+    s.appendChild(d);
+  });
+}
+
+// ════════════════════════════════════════════════════════
+// LOAD PROGRAM
+// ════════════════════════════════════════════════════════
+function loadProg(i,btn){
+  stopAuto();
+  document.querySelectorAll('.pb').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  curProg=PROGS[i];
+  document.getElementById('progDesc').textContent=curProg.desc;
+  memory=curProg.mem.map(r=>({...r}));
+  acc=0;pc=0;mar=0;mdr=0;cir='—';cu='—';alu='—';
+  microSteps=[];microIdx=0;halted=false;cmpFlag='';
+  renderMem();updateRegs(false);clearCycleStrip();clearArrows();
+  document.getElementById('outVal').textContent='—';
+  document.getElementById('outVal').classList.remove('lit');
+  document.getElementById('btnStep').disabled=false;
+  document.getElementById('btnAuto').disabled=false;
+  document.getElementById('btnReset').disabled=false;
+  setStatus('READY','');
+  clearLog();
+  setExplain('PROGRAM LOADED',`<span class="g">${curProg.name}</span> — ${curProg.desc} Press <strong>NEXT STEP</strong> to begin the Fetch-Decode-Execute cycle.`);
+  log(`<span class="g">▸ LOADED</span> ${curProg.name}`,'cur');
+  log(`Instructions at: ${memory.filter(r=>r.t==='I').map(r=>`<span class="b">${r.a}</span>`).join(', ')}`);
+  log(`Data at: ${memory.filter(r=>r.t==='D').map(r=>`<span class="b">${r.a}</span> (${r.l})`).join(', ')}`);
+  buildMicroSteps();
+}
+
+// ════════════════════════════════════════════════════════
+// BUILD ALL MICRO-STEPS for entire program
+// ════════════════════════════════════════════════════════
+function buildMicroSteps(){
+  microSteps=[];
+  const instrRows=memory.filter(r=>r.t==='I');
+  instrRows.forEach((irow,iidx)=>{
+    const raw=String(irow.v);
+    const {op,arg}=parseInstr(raw);
+    addFetchDecodeSteps(irow.a, raw, op, arg, iidx, instrRows.length);
+    addExecuteSteps(op, arg, iidx, instrRows.length);
+  });
+}
+
+function addFetchDecodeSteps(addr, raw, op, arg, iidx, total){
+  // Step 1: PC → MAR (FETCH)
+  microSteps.push({
+    cycleIdx:0,
+    phase:'FETCH  [ Step 1 of 6 ]',
+    explain:`The <span class="g">Program Counter (PC)</span> holds address <span class="go">${addr}</span>. The CU copies PC into <span class="g">MAR</span> and sends a READ signal to RAM. MAR now points to address <span class="go">${addr}</span>.`,
+    srcId:'r-pc', dstId:'r-mar', color:'gold',
+    action:()=>{ mar=pc; cu='FETCH'; },
+    highlight:{src:'r-pc', dst:'r-mar'},
+    memHighlight:null,
+    logHtml:`<span class="g">[FETCH]</span> PC=<span class="go">${addr}</span> → MAR=<span class="go">${addr}</span>. CU sends READ to RAM.`
+  });
+  // Step 2: RAM[MAR] → MDR (LOAD)
+  microSteps.push({
+    cycleIdx:1,
+    phase:'LOAD  [ Step 2 of 6 ]',
+    explain:`RAM looks up address <span class="b">${addr}</span> and puts its contents <span class="go">"${raw}"</span> onto the data bus. This flows into <span class="g">MDR</span>.`,
+    srcId:'mrow-'+addr, dstId:'r-mdr', color:'blue',
+    action:()=>{ mdr=raw; cu='MEM READ'; },
+    highlight:{src:null, dst:'r-mdr'},
+    memHighlight:{addr, cls:'row-fetch'},
+    logHtml:`<span class="g">[LOAD]</span> RAM[<span class="b">${addr}</span>]="<span class="o">${raw}</span>" → MDR via data bus.`
+  });
+  // Step 3: MDR → CIR (DECODE)
+  microSteps.push({
+    cycleIdx:2,
+    phase:'DECODE  [ Step 3 of 6 ]',
+    explain:`<span class="g">MDR</span> transfers <span class="go">"${raw}"</span> into the <span class="g">Current Instruction Register (CIR)</span>. The CU decodes it: opcode = <span class="p">${op}</span>${arg!==null?`, operand address = <span class="b">${arg}</span>`:', no operand'}.`,
+    srcId:'r-mdr', dstId:'r-cir', color:'green',
+    action:()=>{ cir=raw; cu='DECODE:'+op; alu='—'; },
+    highlight:{src:'r-mdr', dst:'r-cir'},
+    memHighlight:null,
+    logHtml:`<span class="g">[DECODE]</span> MDR → CIR = "<span class="p">${raw}</span>". Opcode: <span class="p">${op}</span>${arg!==null?`, addr: <span class="b">${arg}</span>`:''}.`
+  });
+  // Step 4: PC++ 
+  microSteps.push({
+    cycleIdx:3,
+    phase:'PC INCREMENT  [ Step 4 of 6 ]',
+    explain:`The <span class="g">Program Counter</span> is incremented from <span class="go">${addr}</span> to <span class="go">${addr+1}</span>. This happens <em>before</em> execution so the CPU is already prepared for the next instruction.`,
+    srcId:null, dstId:'r-pc', color:'green',
+    action:()=>{ pc++; cu=op+' READY'; },
+    highlight:{src:null, dst:'r-pc'},
+    memHighlight:null,
+    logHtml:`<span class="g">[PC++]</span> Program Counter: <span class="go">${addr}</span> → <span class="go">${addr+1}</span>.`
+  });
+}
+
+function addExecuteSteps(op, arg, iidx, total){
+  if(op==='HLT'){
+    microSteps.push({
+      cycleIdx:4,
+      phase:'EXECUTE  [ Step 5 of 6 ]',
+      explain:`The CU decodes <span class="p">HLT</span>. It sends a STOP signal — all operations cease. The CPU halts.`,
+      srcId:'r-cu', dstId:null, color:'purple',
+      action:()=>{ cu='HALT'; alu='HLT'; },
+      highlight:{src:'r-cu', dst:null},
+      memHighlight:null,
+      logHtml:`<span class="g">[EXECUTE]</span> <span class="p">HLT</span> — CU sends STOP. CPU halting.`,
+      isHalt:true
+    });
+    return;
+  }
+
+  if(op==='LDA'){
+    // Execute: MAR ← arg
+    microSteps.push({
+      cycleIdx:4,
+      phase:'EXECUTE — LDA  [ Step 5a of 6 ]',
+      explain:`CU decodes <span class="p">LDA ${arg}</span>. It puts operand address <span class="b">${arg}</span> into <span class="g">MAR</span>, then sends a READ to RAM to fetch that value into MDR.`,
+      srcId:'r-cir', dstId:'r-mar', color:'purple',
+      action:()=>{ mar=arg; mdr=memRead(arg); cu='LDA:READ'; },
+      highlight:{src:'r-cir', dst:'r-mar'},
+      memHighlight:{addr:arg, cls:'row-read'},
+      logHtml:`<span class="g">[EXEC-LDA]</span> CIR→MAR=<span class="b">${arg}</span>, RAM[${arg}]=<span class="o">${memRead(arg)}</span>→MDR.`
+    });
+    // Writeback: MDR → ACC
+    const val=memRead(arg);
+    microSteps.push({
+      cycleIdx:5,
+      phase:'WRITEBACK — LDA  [ Step 6 of 6 ]',
+      explain:`<span class="g">MDR</span> (value <span class="o">${val}</span> from address <span class="b">${arg}</span>) is written into the <span class="g">Accumulator (ACC)</span>. ACC now holds <span class="o">${val}</span>.`,
+      srcId:'r-mdr', dstId:'r-acc', color:'orange',
+      action:()=>{ acc=Number(mdr); alu='LOAD'; cu='LDA DONE'; },
+      highlight:{src:'r-mdr', dst:'r-acc'},
+      memHighlight:null,
+      logHtml:`<span class="g">[WRITEBACK]</span> MDR=<span class="o">${val}</span> → ACC=<span class="o">${val}</span>.`
+    });
+    return;
+  }
+
+  if(op==='STA'){
+    const curAcc=()=>acc;
+    microSteps.push({
+      cycleIdx:4,
+      phase:'EXECUTE — STA  [ Step 5a of 6 ]',
+      explain:`CU decodes <span class="p">STA ${arg}</span>. The current ACC value (<span class="o">${acc}</span>) is copied to <span class="g">MDR</span>, and address <span class="b">${arg}</span> is put into <span class="g">MAR</span>.`,
+      srcId:'r-acc', dstId:'r-mdr', color:'orange',
+      action:()=>{ mar=arg; mdr=acc; cu='STA:WRITE'; },
+      highlight:{src:'r-acc', dst:'r-mdr'},
+      memHighlight:{addr:arg, cls:'row-write'},
+      logHtml:`<span class="g">[EXEC-STA]</span> ACC=<span class="o">${acc}</span>→MDR, MAR=<span class="b">${arg}</span>.`
+    });
+    microSteps.push({
+      cycleIdx:5,
+      phase:'WRITEBACK — STA  [ Step 6 of 6 ]',
+      explain:`<span class="g">MDR</span> (value <span class="o">${acc}</span>) is written from the CPU back to <span class="b">RAM[${arg}]</span> via the data bus. The result is now stored in memory.`,
+      srcId:'r-mdr', dstId:'mrow-'+arg, color:'blue',
+      action:()=>{ updateMemCell(arg, acc); cu='STA DONE'; alu='STORE'; },
+      highlight:{src:'r-mdr', dst:null},
+      memHighlight:{addr:arg, cls:'row-write'},
+      logHtml:`<span class="g">[WRITEBACK]</span> MDR=<span class="o">${acc}</span> written to RAM[<span class="b">${arg}</span>].`
+    });
+    return;
+  }
+
+  if(['ADD','SUB','MUL','DIV','MOD'].includes(op)){
+    const opSyms={ADD:'+',SUB:'−',MUL:'×',DIV:'÷',MOD:'%'};
+    const sym=opSyms[op];
+    const bval=memRead(arg);
+    const curA=()=>acc;
+    // 5a: MAR ← arg, fetch operand
+    microSteps.push({
+      cycleIdx:4,
+      phase:`EXECUTE — ${op}  [ Step 5a of 6 ]`,
+      explain:`CU decodes <span class="p">${op} ${arg}</span>. Address <span class="b">${arg}</span> goes into <span class="g">MAR</span>. RAM reads address ${arg} and puts value <span class="o">${bval}</span> into <span class="g">MDR</span>.`,
+      srcId:'r-cir', dstId:'r-mar', color:'purple',
+      action:()=>{ mar=arg; mdr=memRead(arg); cu=op+':FETCH'; },
+      highlight:{src:'r-cir', dst:'r-mar'},
+      memHighlight:{addr:arg, cls:'row-read'},
+      logHtml:`<span class="g">[EXEC-${op} a]</span> MAR←<span class="b">${arg}</span>, MDR←<span class="o">${bval}</span> from RAM.`
+    });
+    // 5b: ALU computes
+    microSteps.push({
+      cycleIdx:4,
+      phase:`EXECUTE — ${op} ALU  [ Step 5b of 6 ]`,
+      explain:`The <span class="g">ALU</span> receives <span class="o">${acc}</span> from ACC and <span class="o">${bval}</span> from MDR. It computes <span class="o">${acc} ${sym} ${bval}</span>. Result will be written to ACC.`,
+      srcId:'r-mdr', dstId:'r-alu', color:'green',
+      action:()=>{
+        const b=Number(mdr);
+        let r;
+        if(op==='ADD')r=acc+b;
+        else if(op==='SUB')r=acc-b;
+        else if(op==='MUL')r=acc*b;
+        else if(op==='DIV')r=Math.floor(acc/b);
+        else r=acc%b;
+        alu=`${acc}${sym}${b}=${r}`;
+        cu=op+':ALU';
+        // store result temporarily in alu display but not yet in acc
+        // We'll push to acc in writeback
+        window._aluResult=r;
+      },
+      highlight:{src:'r-mdr', dst:'r-alu'},
+      memHighlight:null,
+      logHtml:`<span class="g">[EXEC-${op} b]</span> ALU: ACC${sym}MDR.`
+    });
+    // Writeback: ALU result → ACC
+    microSteps.push({
+      cycleIdx:5,
+      phase:`WRITEBACK — ${op}  [ Step 6 of 6 ]`,
+      explain:()=>`ALU result <span class="o">${window._aluResult}</span> is written back to the <span class="g">Accumulator (ACC)</span>. ACC: <span class="o">${acc}</span> ${sym} <span class="o">${bval}</span> = <span class="o">${window._aluResult}</span>.`,
+      srcId:'r-alu', dstId:'r-acc', color:'orange',
+      action:()=>{ acc=window._aluResult; cu=op+' DONE'; },
+      highlight:{src:'r-alu', dst:'r-acc'},
+      memHighlight:null,
+      logHtml:()=>`<span class="g">[WRITEBACK]</span> ALU result <span class="o">${window._aluResult}</span> → ACC.`
+    });
+    return;
+  }
+
+  if(op==='CMP'){
+    const bval=memRead(arg);
+    microSteps.push({
+      cycleIdx:4,
+      phase:'EXECUTE — CMP  [ Step 5a of 6 ]',
+      explain:`CU sends address <span class="b">${arg}</span> to MAR. RAM fetches value <span class="o">${bval}</span> into MDR for comparison.`,
+      srcId:'r-cir', dstId:'r-mar', color:'purple',
+      action:()=>{ mar=arg; mdr=memRead(arg); cu='CMP:FETCH'; },
+      highlight:{src:'r-cir', dst:'r-mar'},
+      memHighlight:{addr:arg, cls:'row-read'},
+      logHtml:`<span class="g">[EXEC-CMP a]</span> MAR←<span class="b">${arg}</span>, MDR←<span class="o">${bval}</span>.`
+    });
+    microSteps.push({
+      cycleIdx:4,
+      phase:'EXECUTE — CMP ALU  [ Step 5b of 6 ]',
+      explain:()=>{const b=Number(mdr);const f=acc===b?'EQUAL':acc>b?'GREATER':'LESS';return`<span class="g">ALU</span> compares ACC=<span class="o">${acc}</span> with MDR=<span class="o">${b}</span>. Result flag: <span class="p">${f}</span>. This flag controls conditional jumps in real programs.`;},
+      srcId:'r-mdr', dstId:'r-alu', color:'green',
+      action:()=>{ const b=Number(mdr);cmpFlag=acc===b?'EQUAL':acc>b?'GREATER':'LESS';alu='CMP:'+cmpFlag;cu='FLAG:'+cmpFlag; },
+      highlight:{src:'r-mdr', dst:'r-alu'},
+      memHighlight:null,
+      logHtml:()=>`<span class="g">[EXEC-CMP b]</span> ACC(${acc}) vs MDR(${mdr}) → <span class="p">${cmpFlag}</span>.`
+    });
+    microSteps.push({
+      cycleIdx:5,
+      phase:'WRITEBACK — CMP  [ Step 6 of 6 ]',
+      explain:()=>`Comparison flag <span class="p">${cmpFlag}</span> is set in the CU. No change to ACC or RAM — only the flag register is updated.`,
+      srcId:'r-alu', dstId:'r-cu', color:'purple',
+      action:()=>{ cu='FLAG:'+cmpFlag; },
+      highlight:{src:'r-alu', dst:'r-cu'},
+      memHighlight:null,
+      logHtml:()=>`<span class="g">[WRITEBACK]</span> Flag <span class="p">${cmpFlag}</span> set in CU.`
+    });
+    return;
+  }
+
+  if(op==='OUT'){
+    const bval=memRead(arg);
+    microSteps.push({
+      cycleIdx:4,
+      phase:'EXECUTE — OUT  [ Step 5a of 6 ]',
+      explain:`CU sends address <span class="b">${arg}</span> to MAR. RAM fetches value <span class="o">${bval}</span> into MDR to be output.`,
+      srcId:'r-cir', dstId:'r-mar', color:'purple',
+      action:()=>{ mar=arg; mdr=memRead(arg); cu='OUT:FETCH'; },
+      highlight:{src:'r-cir', dst:'r-mar'},
+      memHighlight:{addr:arg, cls:'row-read'},
+      logHtml:`<span class="g">[EXEC-OUT a]</span> MAR←<span class="b">${arg}</span>, MDR←<span class="o">${bval}</span>.`
+    });
+    microSteps.push({
+      cycleIdx:5,
+      phase:'WRITEBACK — OUT  [ Step 6 of 6 ]',
+      explain:`MDR value <span class="o">${bval}</span> is sent over the <span class="go">output bus</span> to the monitor. The result is now visible on screen.`,
+      srcId:'r-mdr', dstId:'outputUnit', color:'gold',
+      action:()=>{
+        const ov=mdr;
+        document.getElementById('outVal').textContent='► '+ov;
+        document.getElementById('outVal').classList.add('lit');
+        alu='OUTPUT'; cu='OUT DONE';
+      },
+      highlight:{src:'r-mdr', dst:null},
+      memHighlight:null,
+      logHtml:`<span class="g">[WRITEBACK]</span> MDR=<span class="o">${bval}</span> → Output bus → Monitor.`
+    });
+    return;
+  }
+}
+
+// ════════════════════════════════════════════════════════
+// STEP
+// ════════════════════════════════════════════════════════
+function step(){
+  if(halted){log('<span class="g">HALT.</span> Reset to run again.');return;}
+  if(microIdx>=microSteps.length){halt();return;}
+
+  const ms=microSteps[microIdx];
+  clearRegHighlights();
+
+  // Run action
+  ms.action();
+  updateRegs(true);
+
+  // Memory highlight
+  clearMemHighlight();
+  if(ms.memHighlight) highlightMemRow(ms.memHighlight.addr, ms.memHighlight.cls);
+
+  // Reg highlights
+  if(ms.highlight){
+    if(ms.highlight.src) document.getElementById(ms.highlight.src)?.classList.add('active-src');
+    if(ms.highlight.dst) document.getElementById(ms.highlight.dst)?.classList.add('active-dst');
+  }
+
+  // Cycle strip
+  setCycleStrip(ms.cycleIdx);
+
+  // Arrow
+  clearArrows();
+  if(ms.srcId&&ms.dstId) drawArrow(ms.srcId, ms.dstId, ms.color);
+
+  // Explainer
+  const exText=typeof ms.explain==='function'?ms.explain():ms.explain;
+  setExplain(ms.phase, exText);
+
+  // Log
+  const logHtml=typeof ms.logHtml==='function'?ms.logHtml():ms.logHtml;
+  log(logHtml,'cur');
+
+  // Status
+  setStatus('STEP '+(microIdx+1)+' / '+microSteps.length,'run');
+
+  if(ms.isHalt){halt();return;}
+
+  microIdx++;
+
+  // Check if we just finished all steps
+  if(microIdx>=microSteps.length){
+    setTimeout(()=>halt(),300);
+  }
+}
+
+// ════════════════════════════════════════════════════════
+// ARROWS — draw between elements
+// ════════════════════════════════════════════════════════
+function drawArrow(srcId, dstId, color){
+  clearTimeout(arrowTimeout);
+  const grid=document.getElementById('archGrid');
+  const gridRect=grid.getBoundingClientRect();
+
+  const srcEl=document.getElementById(srcId);
+  const dstEl=document.getElementById(dstId);
+  if(!srcEl||!dstEl)return;
+
+  const sR=srcEl.getBoundingClientRect();
+  const dR=dstEl.getBoundingClientRect();
+
+  // Convert to SVG coords relative to archGrid
+  const sx=sR.left-gridRect.left+sR.width/2;
+  const sy=sR.top-gridRect.top+sR.height/2;
+  const dx=dR.left-gridRect.left+dR.width/2;
+  const dy=dR.top-gridRect.top+dR.height/2;
+
+  // Pick a good start/end edge
+  let x1,y1,x2,y2;
+  const dx2=dx-sx, dy2=dy-sy;
+  // Exit from right or left of src, enter from nearest side of dst
+  if(Math.abs(dx2)>Math.abs(dy2)){
+    // Horizontal dominant
+    if(dx2>0){
+      x1=sR.right-gridRect.left; y1=sR.top-gridRect.top+sR.height/2;
+      x2=dR.left-gridRect.left; y2=dR.top-gridRect.top+dR.height/2;
+    } else {
+      x1=sR.left-gridRect.left; y1=sR.top-gridRect.top+sR.height/2;
+      x2=dR.right-gridRect.left; y2=dR.top-gridRect.top+dR.height/2;
+    }
+  } else {
+    // Vertical dominant
+    if(dy2>0){
+      x1=sR.left-gridRect.left+sR.width/2; y1=sR.bottom-gridRect.top;
+      x2=dR.left-gridRect.left+dR.width/2; y2=dR.top-gridRect.top;
+    } else {
+      x1=sR.left-gridRect.left+sR.width/2; y1=sR.top-gridRect.top;
+      x2=dR.left-gridRect.left+dR.width/2; y2=dR.bottom-gridRect.top;
+    }
+  }
+
+  // Bezier control points
+  const cx=(x1+x2)/2, cy=(y1+y2)/2;
+  const perpX=-(y2-y1)*0.3, perpY=(x2-x1)*0.3;
+
+  const svg=document.getElementById('arrowSvg');
+  const g=document.getElementById('arrowGroup');
+  g.innerHTML='';
+
+  const colorMap={gold:'#ffd700',green:'#00ffb4',blue:'#38beff',orange:'#ff9044',purple:'#c97cff'};
+  const col=colorMap[color]||'#ffd700';
+  const markerId='ah-'+color;
+
+  // Path
+  const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+  const d=`M${x1},${y1} Q${cx+perpX},${cy+perpY} ${x2},${y2}`;
+  path.setAttribute('d',d);
+  path.setAttribute('class',`arrow-line arrow-anim`);
+  path.setAttribute('stroke',col);
+  path.setAttribute('marker-end',`url(#${markerId})`);
+  path.style.filter=`drop-shadow(0 0 4px ${col}88)`;
+  g.appendChild(path);
+
+  // Label at midpoint
+  const lx=cx+perpX, ly=cy+perpY;
+  const labels={
+    'r-pc→r-mar':'PC→MAR','mrow→r-mdr':'RAM→MDR','r-mdr→r-cir':'MDR→CIR',
+    'r-cir→r-mar':'CIR→MAR','r-mdr→r-alu':'MDR→ALU','r-alu→r-acc':'ALU→ACC',
+    'r-acc→r-mdr':'ACC→MDR','r-mdr→outputUnit':'MDR→OUT','r-alu→r-cu':'ALU→CU'
+  };
+  const lkey=srcId.replace('mrow-'+(/\d+/.exec(srcId)||[''])[0],'mrow')+'→'+dstId;
+  const ltext= srcId.startsWith('mrow')?'RAM→MDR':
+               srcId==='r-pc'&&dstId==='r-mar'?'PC→MAR':
+               srcId==='r-mdr'&&dstId==='r-cir'?'MDR→CIR':
+               srcId==='r-mdr'&&dstId==='r-alu'?'MDR→ALU':
+               srcId==='r-alu'&&dstId==='r-acc'?'ALU→ACC':
+               srcId==='r-acc'&&dstId==='r-mdr'?'ACC→MDR':
+               srcId==='r-cir'&&dstId==='r-mar'?'CIR→MAR':
+               srcId==='r-mdr'&&dstId==='outputUnit'?'MDR→OUT':
+               srcId==='r-alu'&&dstId==='r-cu'?'ALU→CU':
+               srcId===dstId?'':
+               srcId.replace('r-','')+'→'+dstId.replace('r-','');
+
+  if(ltext){
+    const bg=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    const tw=ltext.length*6.2+8;
+    bg.setAttribute('x',lx-tw/2);bg.setAttribute('y',ly-9);
+    bg.setAttribute('width',tw);bg.setAttribute('height',16);
+    bg.setAttribute('rx',3);bg.setAttribute('ry',3);
+    bg.setAttribute('fill','#04080d');bg.setAttribute('stroke',col);bg.setAttribute('stroke-width','0.8');
+    bg.setAttribute('opacity','0.9');
+    g.appendChild(bg);
+
+    const txt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    txt.setAttribute('x',lx);txt.setAttribute('y',ly+1);
+    txt.setAttribute('class','arrow-label-txt');
+    txt.setAttribute('fill',col);txt.textContent=ltext;
+    g.appendChild(txt);
+  }
+}
+
+function clearArrows(){
+  document.getElementById('arrowGroup').innerHTML='';
+}
+
+// ════════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════════
+function memRead(addr){const r=memory.find(x=>x.a===addr);return r?r.v:0;}
+function parseInstr(raw){const p=String(raw).trim().split(/\s+/);return{op:p[0].toUpperCase(),arg:p[1]?parseInt(p[1]):null};}
+
+function renderMem(){
+  const tb=document.getElementById('memBody');tb.innerHTML='';
+  memory.forEach(row=>{
+    const tr=document.createElement('tr');tr.id='mrow-'+row.a;
+    const tc=row.t==='I'?'ib':'db',tl=row.t==='I'?'INSTR':'DATA';
+    tr.innerHTML=`<td class="addr-c">${row.a}</td><td id="mcell-${row.a}">${row.v}</td><td><span class="tbadge ${tc}">${tl}</span></td><td style="font-size:7.5px;color:var(--dim);">${row.l}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function updateMemCell(addr,val){
+  const c=document.getElementById('mcell-'+addr);if(c){c.textContent=val;c.style.color='var(--orange)';}
+  const r=memory.find(x=>x.a===addr);if(r)r.v=val;
+}
+
+function highlightMemRow(addr,cls){
+  document.querySelectorAll('.mem-table tr').forEach(r=>r.classList.remove('row-fetch','row-read','row-write'));
+  const tr=document.getElementById('mrow-'+addr);if(tr)tr.classList.add(cls);
+}
+function clearMemHighlight(){document.querySelectorAll('.mem-table tr').forEach(r=>r.classList.remove('row-fetch','row-read','row-write'));}
+
+function clearRegHighlights(){
+  document.querySelectorAll('.reg').forEach(r=>r.classList.remove('active-src','active-dst','active-exec'));
+}
+
+function setReg(id,val,flash){
+  const el=document.getElementById('v-'+id);if(!el)return;
+  el.textContent=String(val);
+  if(flash){el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),700);}
+}
+function updateRegs(flash){
+  setReg('pc',pc,flash);setReg('mar',mar,flash);setReg('mdr',mdr,flash);
+  setReg('cir',cir,flash);setReg('cu',cu,flash);setReg('alu',alu,flash);setReg('acc',acc,flash);
+}
+
+function setCycleStrip(active){
+  for(let i=0;i<6;i++){
+    const el=document.getElementById('cs-'+i);if(!el)continue;
+    el.classList.remove('active','done');
+    if(i<active)el.classList.add('done');
+    if(i===active)el.classList.add('active');
+  }
+}
+function clearCycleStrip(){for(let i=0;i<6;i++){const e=document.getElementById('cs-'+i);if(e)e.classList.remove('active','done');}}
+
+function setExplain(phase,text){
+  document.getElementById('exPhase').textContent=phase;
+  document.getElementById('exText').innerHTML=text;
+}
+
+function log(html,cls=''){
+  const a=document.getElementById('logArea');
+  const d=document.createElement('div');d.className='ll '+(cls||'');
+  d.innerHTML=html;a.appendChild(d);a.scrollTop=a.scrollHeight;
+}
+function clearLog(){document.getElementById('logArea').innerHTML='';}
+
+function setStatus(txt,state){
+  document.getElementById('stxt').textContent=txt;
+  const d=document.getElementById('sdot');d.className='sdot'+(state?' '+state:'');
+}
+
+function halt(){
+  halted=true;stopAuto();clearArrows();clearRegHighlights();
+  cu='HALTED';updateRegs(true);clearCycleStrip();
+  setStatus('HALTED — DONE','done');
+  setExplain('PROGRAM COMPLETE',`CPU has executed all instructions. Final <span class="g">ACC = <span class="o">${acc}</span></span>. Press <strong>RESET</strong> to run again.`);
+  log(`<span class="g">▸ CPU HALTED.</span> Final ACC = <span class="o">${acc}</span>.`,'cur');
+  document.getElementById('btnStep').disabled=true;
+  document.getElementById('btnAuto').disabled=true;
+}
+
+function resetSim(){
+  stopAuto();if(!curProg)return;
+  memory=curProg.mem.map(r=>({...r}));
+  acc=0;pc=0;mar=0;mdr=0;cir='—';cu='—';alu='—';
+  microSteps=[];microIdx=0;halted=false;cmpFlag='';
+  renderMem();updateRegs(false);clearCycleStrip();clearArrows();clearRegHighlights();clearMemHighlight();
+  document.getElementById('outVal').textContent='—';
+  document.getElementById('outVal').classList.remove('lit');
+  document.getElementById('btnStep').disabled=false;
+  document.getElementById('btnAuto').disabled=false;
+  setStatus('READY','');
+  clearLog();
+  setExplain('RESET',`Program reset. Press <strong>NEXT STEP</strong> to begin again.`);
+  buildMicroSteps();
+  log('CPU reset. PC=0. Ready.','cur');
+}
+
+// Auto run
+function toggleAuto(){if(autoOn)stopAuto();else startAuto();}
+function startAuto(){
+  if(halted)return;
+  autoOn=true;document.getElementById('btnAuto').textContent='⏸ PAUSE';
+  setStatus('AUTO RUNNING…','run');runNext();
+}
+function runNext(){
+  if(!autoOn||halted)return;
+  step();
+  if(!halted){const spd=parseInt(document.getElementById('spd').value);autoTimer=setTimeout(runNext,2100-spd);}
+}
+function stopAuto(){
+  autoOn=false;clearTimeout(autoTimer);
+  document.getElementById('btnAuto').textContent='⏵ AUTO';
+  if(!halted)setStatus('PAUSED','');
+}
+
+// Init
+buildProgBtns();
+buildCycleStrip();
+</script>
+</body>
+</html>
